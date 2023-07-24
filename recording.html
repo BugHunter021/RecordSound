@@ -1,0 +1,174 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta http-equiv="X-UA-Compatible" content="IE=edge">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Recording</title>
+</head>
+<body>
+    <button id="record">RECORD</button>
+    <button id="play" disabled>PLAY</button>
+    <a id="audiolink" style="display: none">Download audio</a> 
+    <div id="waveform" style="border: 3px solid orangered; border-radius: 5px; padding: 50px;">
+        <div id="time">0:00</div>
+        <div id="duration">0:00</div>
+    </div>
+    <label>
+        Zoom: <input type="range" min="10" max="1000" value="100" />
+    </label>
+</body>
+<script type="module">
+    import WaveSurfer from './static/script/wavesurfer/wavesurfer.esm.min.js'
+    import RecordPlugin from './static/script/wavesurfer/record.esm.min.js'
+    import TimelinePlugin from './static/script/wavesurfer/timeline.esm.min.js'
+
+    // Create a timeline plugin instance with custom options
+    const topTimeline = TimelinePlugin.create({
+        height: 20,
+        insertPosition: 'beforebegin',
+        timeInterval: 0.2,
+        primaryLabelInterval: 5,
+        secondaryLabelInterval: 1,
+        style: {
+            fontSize: '20px',
+            color: '#2D5B88',
+        },
+    })
+
+    // Create a second timeline
+    const bottomTimline = TimelinePlugin.create({
+        height: 30,
+        timeInterval: 0.1,
+        primaryLabelInterval: 1,
+        style: {
+            fontSize: '20px',
+            color: '#6A3274',
+        },
+    })
+
+
+    // Create an instance of WaveSurfer
+    const wavesurfer = WaveSurfer.create({
+        container: '#waveform',
+        normalize: true,
+        waveColor: '#4F4A85',
+        progressColor: '#383351',
+        url: './static/media/audios/example.mp3',
+        plugins: [bottomTimline],
+    })
+
+    // Initialize the Record plugin
+    const record = wavesurfer.registerPlugin(RecordPlugin.create())
+
+    const recButton = document.querySelector('#record')
+    const playButton = document.querySelector('#play')
+
+    // Record/Stop
+    recButton.onclick = () => {
+        if (wavesurfer.isPlaying()) {
+            wavesurfer.pause()
+        }
+        if (record.isRecording()) {
+            record.stopRecording()
+            recButton.textContent = 'Record'
+            playButton.disabled = false
+            return
+        }
+        recButton.disabled = true
+        record.startRecording().then(() => {
+            recButton.textContent = 'Stop'
+            recButton.disabled = false
+        })
+    }
+
+    // Play/Pause
+    wavesurfer.once('ready', () => {
+        playButton.onclick = () => {
+            wavesurfer.playPause()
+        }
+        wavesurfer.on('play', () => {
+            playButton.textContent = 'Pause'
+        })
+        wavesurfer.on('pause', () => {
+            playButton.textContent = 'Play'
+        })
+    })
+
+    // Update the zoom level on slider change
+    wavesurfer.once('decode', () => {
+        const slider = document.querySelector('input[type="range"]')
+
+        slider.addEventListener('input', (e) => {
+            const minPxPerSec = e.target.valueAsNumber
+            wavesurfer.zoom(minPxPerSec)
+        })
+    })
+
+    // Download link
+    const link = document.querySelector('#audiolink')
+    record.on('stopRecording', () => {
+        let URLBlob = record.getRecordedUrl()
+        link.href = URLBlob
+        link.download = 'recording.wav'
+        link.style.display = ''
+        //alert(record.getRecordedUrl());
+        //alert(link.href);
+
+// Get Record File Content and Upload by POST method to PHP uploader
+//let URLBlob =link.href;
+var xhr = new XMLHttpRequest;
+xhr.responseType = 'blob';
+xhr.onload = function() {
+   var recoveredBlob = xhr.response;
+   var reader = new FileReader;
+   reader.onload = function() {
+     var blobAsDataUrl = reader.result;
+     fetch(blobAsDataUrl)
+
+     fetch('http://127.0.0.1/wave/upload.php', {method:"POST", body:blobAsDataUrl})
+            .then(response => {
+                if (response.ok) return response;
+                else throw Error(`Server returned ${response.status}: ${response.statusText}`)
+            })
+            .then(response => console.log(response.text()))
+            .catch(err => {
+                alert(err);
+            });
+
+   };
+   reader.readAsDataURL(recoveredBlob);
+};
+
+xhr.open('GET', URLBlob);
+xhr.send();
+
+
+    })
+    record.on('startRecording', () => {
+        link.href = ''
+        link.download = ''
+        link.style.display = 'none'
+    })
+    
+   // alert('done');
+
+
+
+    // Current time & duration
+    {
+        const formatTime = (seconds) => {
+            const minutes = Math.floor(seconds / 60)
+            const secondsRemainder = Math.round(seconds) % 60
+            const paddedSeconds = `0${secondsRemainder}`.slice(-2)
+            return `${minutes}:${paddedSeconds}`
+        }
+
+        const timeEl = document.querySelector('#time')
+        const durationEl = document.querySelector('#duration')
+        wavesurfer.on('decode', (duration) => (durationEl.textContent = formatTime(duration)))
+        wavesurfer.on('timeupdate', (currentTime) => (timeEl.textContent = formatTime(currentTime)))
+    }
+
+</script>
+</html>
